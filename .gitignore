@@ -3,6 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#Idea
+.idea/
+
+#SQLite files
+.sqlite
+
+#Image files
+.png
+.bmp
+.gif
+
 # C extensions
 *.so
 
