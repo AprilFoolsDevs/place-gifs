@@ -1,43 +1,29 @@
 import sqlite3
 from PIL import Image, ImageMode
 
-
 start_time = 1
 
 bitmap_width, bitmap_height = 1000, 1000;
-Matrix = [[(255,255,255) for x in range(bitmap_width)] for y in range(bitmap_height)]
+matrix = [[(255, 255, 255) for x in range(bitmap_width)] for y in range(bitmap_height)]
 
 gif_frames = []
 
-DELTA_FRAME_TIME = 60 * 20 #five minutes.
+MINUTES_PER_FRAME = 20
 
-FRAME_DURATION = 1/10
+FRAMES_PER_SECOND = 10
 
-colors = [
-    0xffffff,
-    0xe4e4e4,
-    0x888888,
-    0x222222,
-    0xffa7d1,
-    0xe50000,
-    0xe59500,
-    0xa06a42,
-    0xe5d900,
-    0x94e044,
-    0x02be01,
-    0x00d3dd,
-    0x0083c7,
-    0x0000ea,
-    0xcf6ee4,
-    0x820080
-]
+SECONDS_PER_MINUTE = 60
+
+DELTA_FRAME_TIME = SECONDS_PER_MINUTE * MINUTES_PER_FRAME  # How long is each frame in real time.
+
+FRAME_DURATION = 1 / FRAMES_PER_SECOND  
 
 colors_tuple = [
-    (255,255,255),
-    (228,228,228),
-    (136,136,136),
+    (255, 255, 255),
+    (228, 228, 228),
+    (136, 136, 136),
     (34, 34, 34),
-    (255,167,209),
+    (255, 167, 209),
     (229, 0, 0),
     (229, 149, 0),
     (160, 106, 66),
@@ -50,6 +36,7 @@ colors_tuple = [
     (207, 110, 228),
     (130, 0, 128)
 ]
+
 
 def bitmap_to_matrix(bitmap):
     header_size = 3
@@ -65,49 +52,49 @@ def bitmap_to_matrix(bitmap):
         color1 = colors_tuple[byte >> 4]
         color2 = colors_tuple[byte & 0x0F]
 
-        Matrix[x1][y1] = color1
-        Matrix[x2][y2] = color2
-#        img.putpixel((x1, y1), color1)
-#        img.putpixel((x2, y2), color2)
+        matrix[x1][y1] = color1
+        matrix[x2][y2] = color2
 
-#    img.save(png_name)
 
 def main():
-
-    #Connect to db
+    # Connect to db
     conn = sqlite3.connect("place.sqlite")
     c = conn.cursor()
 
-    image = Image.new("RGB", (1000, 1000), (255,255,255))
+    # initialize gif variable
+    gif = Image.new("RGB", (1000, 1000), (255, 255, 255))
 
-    gif = Image.new("RGB", (1000, 1000), (255,255,255))
+    # This is the timecode of the next variable. Primed to -1.
+    next_frame = -1
 
-    next_frame = DELTA_FRAME_TIME + 1490990923
-
+    # Start with just the first bitmap we have. Will add "golden frames" later.
     for row in c.execute('SELECT * FROM starting_bitmaps ORDER BY recieved_on ASC LIMIT 1'):
         bitmap_to_matrix(row[1])
 
     for row in c.execute('SELECT * FROM placements WHERE recieved_on >= 1490990923 ORDER BY recieved_on'):
-        if(row[1] <= 999 and row[2] <= 999):
-            Matrix[row[1]][row[2]] = colors_tuple[row[3]]
-        if(row[0] > next_frame):
+
+        # Ensure the current placement is within our boarder, then place it.
+        if (row[1] <= 999 and row[2] <= 999):
+            matrix[row[1]][row[2]] = colors_tuple[row[3]]
+
+        # If the next frame time isn't initialized, initialize it.
+        if (next_frame == -1):
+            next_frame = row[0] + DELTA_FRAME_TIME
+
+        # If the current timecode is passed our next frame time, make a new frame.
+        if (row[0] > next_frame):
             print("Generating frame " + str(len(gif_frames) + 1) + "...")
             image = Image.new("RGB", (1000, 1000), (255, 255, 255))
             pixels = image.load()
-            for y in range(0, len(Matrix)):
-                for x in range(0, len(Matrix[y])):
-                    pixels[x, y] = Matrix[x][y]
-            gif_frames.append(image) #Append the image to the list of images.
+            for y in range(0, len(matrix)):
+                for x in range(0, len(matrix[y])):
+                    pixels[x, y] = matrix[x][y]
+            gif_frames.append(image)  # Append the image to the list of images.
             next_frame = next_frame + DELTA_FRAME_TIME
-            print("Done\n")
-    #        image.putpixel((x,y), (255,255,255))#colors_tuple[Matrix[x][y]])
 
     gif_file = open("out.gif", "wb")
 
     gif.save(gif_file, save_all=True, append_images=gif_frames, duration=FRAME_DURATION)
-
-            #   image.show()
-#    gif.save('out.gif')
 
 
 if __name__ == '__main__':
