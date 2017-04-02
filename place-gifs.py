@@ -1,11 +1,27 @@
 import sqlite3
 from PIL import Image, ImageMode
+from enum import Enum
+import numpy
+
+#####################
+# Heatmap Variables #
+#####################
+
+HEATMAP_MAX = 3
+
+HEATMAP_LOW_COLOR = (0, 0, 255)
+
+HEATMAP_HI_COLOR = (255, 0, 0)
+
+class Mode(Enum):
+    NORMAL = 0
+    HEATMAP = 1
 
 start_time = 1
 
 bitmap_width, bitmap_height = 1000, 1000;
 
-matrix = [[(255, 255, 255) for x in range(bitmap_width)] for y in range(bitmap_height)]
+matrix = [[HEATMAP_LOW_COLOR for x in range(bitmap_width)] for y in range(bitmap_height)]
 
 golden_frames = []
 
@@ -25,6 +41,8 @@ FRAME_DURATION = 1 / FRAMES_PER_SECOND
 
 GOLDEN_FRAME_DELTA = SECONDS_PER_MINUTE * GOLDEN_FRAME_INTERVAL
 
+current_mode = Mode.HEATMAP
+
 colors_tuple = [
     (255, 255, 255),
     (228, 228, 228),
@@ -43,6 +61,8 @@ colors_tuple = [
     (207, 110, 228),
     (130, 0, 128)
 ]
+
+
 
 
 def bitmap_to_matrix(bitmap):
@@ -76,14 +96,28 @@ def matrix_to_image(local_matrix):
 
     return image
 
+def setMatrixColor(x, y, code):
+
+    if(current_mode == Mode.NORMAL):
+        matrix[x][y] = colors_tuple[code]
+    elif(current_mode == Mode.HEATMAP):
+        heatmap_diff = tuple(numpy.subtract( HEATMAP_HI_COLOR, HEATMAP_LOW_COLOR))
+        heatmap_div = tuple(numpy.divide(heatmap_diff, HEATMAP_MAX))
+        heatmap_values = tuple(numpy.add(heatmap_div, matrix[x][y]))
+        heatmap_final = (int(heatmap_values[0]), int(heatmap_values[1]), int(heatmap_values[2]))
+        matrix[x][y] = heatmap_final
+
+def clearMatrix():
+    global  matrix
+    matrix = [[HEATMAP_LOW_COLOR for x in range(bitmap_width)] for y in range(bitmap_height)]
+
 def main():
     # Connect to db
     conn = sqlite3.connect("place.sqlite")
     placement_cursor = conn.cursor()
     bitmaps_cursor = conn.cursor()
 
-    # initialize gif variable
-    gif = Image.new("RGB", (1000, 1000), (255, 255, 255))
+    global matrix
 
     # This is the timecode of the next variable. Primed to -1.
     next_frame = -1
@@ -95,7 +129,8 @@ def main():
     for row in bitmaps_cursor.execute('SELECT * FROM starting_bitmaps ORDER BY recieved_on'):
         if earliest_frame == -1:
             earliest_frame = row[0]
-            matrix = bitmap_to_matrix(row[1])
+            if current_mode != Mode.HEATMAP:
+                matrix = bitmap_to_matrix(row[1])
         else:
             golden_frames.append(row[0])
 
@@ -105,7 +140,8 @@ def main():
 
         # Ensure the current placement is within our boarder, then place it.
         if (row[1] <= 999 and row[2] <= 999):
-            matrix[row[1]][row[2]] = colors_tuple[row[3]]
+            setMatrixColor(row[1], row[2], row[3])
+#            matrix[row[1]][row[2]] = colors_tuple[row[3]]
 
         # If the next frame time isn't initialized, initialize it.
         if (next_frame == -1):
@@ -113,7 +149,7 @@ def main():
             next_golden_frame = row[0] + GOLDEN_FRAME_DELTA
 
         # Check if we are at the next golden frame
-        if(len(golden_frames) > 0 and golden_frames[0] <= row[0]):
+        if(current_mode != Mode.HEATMAP and len(golden_frames) > 0 and golden_frames[0] <= row[0]):
             if(row[0] >= next_golden_frame):
                 print("Inserting Golden Frame...")
                 bitmaps_cursor.execute('SELECT * FROM starting_bitmaps WHERE recieved_on = {time}'.format(time = golden_frames[0]))
@@ -132,7 +168,12 @@ def main():
                 for x in range(0, len(matrix[y])):
                     pixels[x, y] = matrix[x][y]
             gif_frames.append(image)  # Append the image to the list of images.
+            clearMatrix()
             next_frame = next_frame + DELTA_FRAME_TIME
+
+    gif = gif_frames[0] # Initialize gif variable with the first frame
+
+    gif_frames.remove(gif_frames[0])
 
     gif_file = open("out.gif", "wb")
 
