@@ -2,6 +2,7 @@ import sqlite3
 from PIL import Image, ImageMode
 from enum import Enum
 import numpy
+import colorsys
 
 #####################
 # Heatmap Variables #
@@ -9,7 +10,7 @@ import numpy
 
 HEATMAP_MAX = 3
 
-HEATMAP_LOW_COLOR = (0, 0, 255)
+HEATMAP_LOW_COLOR = (0, 0, 0)
 
 HEATMAP_HI_COLOR = (255, 0, 0)
 
@@ -27,7 +28,9 @@ golden_frames = []
 
 gif_frames = []
 
-MINUTES_PER_FRAME = 30  # The number of real-time minutes per frame
+GIF_LENGTH_SECONDS = 30
+
+MINUTES_PER_FRAME = 5  # The number of real-time minutes per frame
 
 GOLDEN_FRAME_INTERVAL = 30 # Minutes of delta data used until a golden frame is inserted.
 
@@ -101,6 +104,13 @@ def setMatrixColor(x, y, code):
     if(current_mode == Mode.NORMAL):
         matrix[x][y] = colors_tuple[code]
     elif(current_mode == Mode.HEATMAP):
+
+        
+        maximum_value = map(max, matrix) 
+
+        if maximum_value == 0:
+            maximum_value = 1
+
         heatmap_diff = tuple(numpy.subtract( HEATMAP_HI_COLOR, HEATMAP_LOW_COLOR))
         heatmap_div = tuple(numpy.divide(heatmap_diff, HEATMAP_MAX))
         heatmap_values = tuple(numpy.add(heatmap_div, matrix[x][y]))
@@ -170,6 +180,9 @@ def main():
             gif_frames.append(image)  # Append the image to the list of images.
             clearMatrix()
             next_frame = next_frame + DELTA_FRAME_TIME
+
+        if GIF_LENGTH_SECONDS < len(gif_frames) * FRAME_DURATION:
+            break
 
     gif = gif_frames[0] # Initialize gif variable with the first frame
 
